@@ -14,6 +14,44 @@
 namespace rbmc
 {
 
+namespace
+{
+/**
+ * @brief Persists the UseRedundancyInput failover option
+ *        if there is one.
+ *
+ * @param[in] options - The options passed to StartFailover
+ */
+void persistFailoverRedundancyInput(const FailoverOptions& options)
+{
+    using Failover = sdbusplus::common::xyz::openbmc_project::control::Failover;
+
+    auto redInputString = util::getFailoverOption<std::string>(
+        Failover::Options::UseRedundancyInput, options);
+
+    if (!redInputString.has_value())
+    {
+        return;
+    }
+
+    auto redInput = RedundancyInterface::convertStringToRedundancyInput(
+        redInputString.value());
+
+    if (!redInput.has_value())
+    {
+        lg2::error(
+            "Invalid redundancy input {INPUT} passed in as failover option",
+            "INPUT", redInputString.value());
+        return;
+    }
+
+    lg2::info("Failover called with redundancy input {INPUT}", "INPUT",
+              redInput.value());
+
+    util::writeExternalRedundancyInput(redInput.value(), true);
+}
+} // namespace
+
 const std::string failoverPath =
     std::string{RedundancyInterface::namespace_path::value} + '/' +
     RedundancyInterface::namespace_path::bmc;
@@ -25,7 +63,7 @@ Manager::Manager(sdbusplus::async::context& ctx,
         ctx, failoverPath.c_str()),
     ctx(ctx), providers(std::move(providers)),
     redundancyInterface(ctx, *this, this->providers->getPCIeStorage()),
-    heartbeatInterval(heartbeatInterval)
+    codeUpdateActivation(ctx), heartbeatInterval(heartbeatInterval)
 {
     try
     {
@@ -142,8 +180,8 @@ void Manager::spawnRoleHandler()
 {
     if (redundancyInterface.role() == Role::Active)
     {
-        handler = std::make_unique<ActiveRoleHandler>(ctx, *providers,
-                                                      redundancyInterface);
+        handler = std::make_unique<ActiveRoleHandler>(
+            ctx, *providers, redundancyInterface, codeUpdateActivation);
     }
     else if (redundancyInterface.role() == Role::Passive)
     {
@@ -365,6 +403,11 @@ void Manager::setExternalRedundancyInput(
 sdbusplus::async::task<fo_blocked::Reason> Manager::validateFailoverRequest(
     const FailoverOptions& options)
 {
+    if (!util::validateFailoverRedundancyInput(options))
+    {
+        co_return fo_blocked::Reason::invalidFailoverOption;
+    }
+
     if (!handler)
     {
         co_return fo_blocked::Reason::tooEarly;
@@ -422,6 +465,10 @@ sdbusplus::async::task<> Manager::method_call(start_failover_t /* unused */,
             errors::error_msg::failoverStarted, errors::Level::Informational,
             data);
 
+        // If any redundancy inputs were passed in with the
+        // failover options, persist them for later use.
+        persistFailoverRedundancyInput(options);
+
         ctx.spawn(doFailoverFromPassive(requester));
     }
     else
@@ -434,7 +481,8 @@ sdbusplus::async::task<> Manager::method_call(start_failover_t /* unused */,
             // doesn't happen something went very wrong so give it 30 seconds
             // and log an error.
             using namespace std::chrono_literals;
-            resetTimer = std::make_unique<Timer>(ctx, [this, data]() {
+            resetTimer = std::make_unique<
+                Timer>(ctx, providers->getWaitTracker(), [this, data]() {
                 lg2::error(
                     "Timed out waiting for passive BMC to reset this BMC after failover request");
 
@@ -442,7 +490,7 @@ sdbusplus::async::task<> Manager::method_call(start_failover_t /* unused */,
                     errors::error_msg::failoverFailed, errors::Level::Error,
                     data));
             });
-            resetTimer->start(30s);
+            resetTimer->start(30s, WaitOperation::bmcResetTimer);
         }
         catch (const std::exception& e)
         {
@@ -516,7 +564,8 @@ sdbusplus::async::task<> Manager::doFailoverFromPassive(Requester requester)
     updateRole(role_determination::RoleInfo{
         Role::Active, role_determination::RoleReason::failover});
 
-    auto* active = new ActiveRoleHandler(ctx, *providers, redundancyInterface);
+    auto* active = new ActiveRoleHandler(ctx, *providers, redundancyInterface,
+                                         codeUpdateActivation);
     handler.reset(active);
 
     active->clearFailoversAllowedDuringFailover();

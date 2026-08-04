@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include "code_update_activation.hpp"
 #include "redundancy_mgr.hpp"
 #include "role_handler.hpp"
 #include "timer.hpp"
@@ -27,15 +28,18 @@ class ActiveRoleHandler : public RoleHandler
      * @param[in] ctx - The async context object
      * @param[in] providers - The Providers access object
      * @param[in] iface - The redundancy D-Bus interface object
+     * @param[in] codeUpdateActivation - The Activation D-Bus interface object
      */
     ActiveRoleHandler(sdbusplus::async::context& ctx, Providers& providers,
-                      RedundancyInterface& iface) :
-        RoleHandler(ctx, providers, iface), redMgr(ctx, providers, iface),
+                      RedundancyInterface& iface,
+                      CodeUpdateActivation& codeUpdateActivation) :
+        RoleHandler(ctx, providers, iface),
+        redMgr(ctx, providers, iface, codeUpdateActivation),
         siblingHealthTimer(
-            ctx,
+            ctx, providers.getWaitTracker(),
             std::bind_front(&ActiveRoleHandler::siblingHealthCritical, this)),
         peerConnectionTimer(
-            ctx,
+            ctx, providers.getWaitTracker(),
             std::bind_front(&ActiveRoleHandler::peerConnectionCritical, this))
     {}
 

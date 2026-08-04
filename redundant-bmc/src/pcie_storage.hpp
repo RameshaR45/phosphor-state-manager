@@ -10,7 +10,7 @@ namespace pcie_data
 {
 // Default values for PCIe configuration
 constexpr auto defaultDevicePath = "/dev/bmc-device0";
-constexpr auto defaultRedundancyOffset = 0x3F00000;
+constexpr auto defaultRedundancyOffset = 0x3EFFF80;
 constexpr size_t redundancySize = 1;
 
 constexpr uint8_t redundancyDataVersion = 1;
@@ -71,13 +71,6 @@ class PCIeStorage
     PCIeStorage& operator=(PCIeStorage&&) = delete;
 
     /**
-     * @brief Write the complete redundancy state to PCIe storage
-     *
-     * @param[in] state - The redundancy state to write
-     */
-    virtual void writeState(const RedundancyState& state) = 0;
-
-    /**
      * @brief Read the complete redundancy state from PCIe storage
      *
      * @return The redundancy state
@@ -122,7 +115,9 @@ class PCIeStorageImpl : public PCIeStorage
 {
   private:
     int fd{-1};
-    void* mmioBase{nullptr};
+    void* mmapBase{nullptr}; // page-aligned base returned by mmap
+    void* mmioBase{nullptr}; // actual byte address (mmapBase + page offset)
+    size_t mmapSize{0};      // total mapped size (for munmap)
     std::mutex stateMutex;
     std::string devicePath;
     size_t redundancyOffset;
@@ -133,13 +128,15 @@ class PCIeStorageImpl : public PCIeStorage
     PCIeStorageImpl(const std::string& devPath, size_t offset);
     ~PCIeStorageImpl() override;
 
-    void writeState(const RedundancyState& state) override;
     RedundancyState readState() override;
 
     void updateRole(uint8_t role) override;
     void updateRedundancyEnabled(bool enabled) override;
     void updateFailoverInProgress(bool inProgress) override;
     void updateFailoversAllowed(bool allowed) override;
+
+  private:
+    void writeState(const RedundancyState& state);
 };
 
 } // namespace pcie_data

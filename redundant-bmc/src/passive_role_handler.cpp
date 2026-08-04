@@ -86,7 +86,19 @@ sdbusplus::async::task<> PassiveRoleHandler::start()
             "ERROR", e);
     }
 
-    co_return;
+    try
+    {
+        // This is only valid on the active BMC
+        data::remove(data::key::codeUpdateInProgress);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error(
+            "Failed while removing CodeUpdateInProgress saved value: {ERROR}",
+            "ERROR", e);
+    }
+
+    providers.getTracker().track(ProgressPoint::passiveHandlerStartComplete);
 }
 
 void PassiveRoleHandler::setupSiblingRedEnabledWatch()

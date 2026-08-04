@@ -170,6 +170,12 @@ void addFileData(AdditionalData& data)
             }
         }
 
+        auto codeUpdate = data::read<bool>(data::key::codeUpdateInProgress);
+        if (codeUpdate.value_or(false))
+        {
+            data["CodeUpdate"] = boolToYesOrNo(true);
+        }
+
         auto inputs = util::readExternalRedundancyInputs();
         if (!inputs.empty())
         {
@@ -227,20 +233,28 @@ void addFailoverOptsToData(const FailoverOptions& options,
     {
         std::string adKey = failoverOptPrefix + key;
 
-        data.emplace(adKey, std::visit(
-                                [](auto&& val) -> std::string {
-                                    using T = std::decay_t<decltype(val)>;
-                                    if constexpr (std::is_same_v<T, bool>)
-                                    {
-                                        return val ? "true" : "false";
-                                    }
-                                    else
-                                    {
-                                        // FailoverOptions can only hold bools
-                                        return "Unsupported option type";
-                                    }
-                                },
-                                value));
+        data.emplace(adKey,
+                     std::visit(
+                         [](auto&& val) -> std::string {
+                             using T = std::decay_t<decltype(val)>;
+                             if constexpr (std::is_same_v<T, bool>)
+                             {
+                                 return val ? "true" : "false";
+                             }
+                             else if constexpr (std::is_same_v<T, std::string>)
+                             {
+                                 return val;
+                             }
+                             else if constexpr (std::is_enum_v<T>)
+                             {
+                                 return getPDIEnumString(val);
+                             }
+                             else
+                             {
+                                 return "Unsupported option type";
+                             }
+                         },
+                         value));
     }
 }
 

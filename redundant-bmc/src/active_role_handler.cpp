@@ -13,6 +13,7 @@ namespace rbmc
 using Failover = sdbusplus::common::xyz::openbmc_project::control::Failover;
 
 constexpr auto bmcActiveTarget = "obmc-bmc-active.target";
+const std::chrono::minutes bmcActiveTargetTimeout{30};
 const std::chrono::minutes siblingHealthTimeout{5};
 
 // NOLINTNEXTLINE
@@ -44,7 +45,7 @@ sdbusplus::async::task<> ActiveRoleHandler::start()
     try
     {
         // NOLINTNEXTLINE(clang-analyzer-core.uninitialized.Branch)
-        co_await services.startUnit(bmcActiveTarget, std::chrono::minutes{10});
+        co_await services.startUnit(bmcActiveTarget, bmcActiveTargetTimeout);
     }
     catch (const std::exception& e)
     {
@@ -75,6 +76,8 @@ sdbusplus::async::task<> ActiveRoleHandler::start()
     co_await redMgr.determineRedundancyAndSync();
 
     startAllWatches();
+
+    providers.getTracker().track(ProgressPoint::activeHandlerStartComplete);
 }
 
 void ActiveRoleHandler::siblingStateChange(BMCState state)
@@ -110,7 +113,8 @@ void ActiveRoleHandler::siblingHealthChange(bool alive)
                 peerConnectionTimer.stop();
             }
 
-            siblingHealthTimer.start(siblingHealthTimeout);
+            siblingHealthTimer.start(siblingHealthTimeout,
+                                     WaitOperation::siblingHealthTimer);
 
             // Background sync won't work without a healthy sibling
             ctx.spawn(providers.getSyncInterface().disableBackgroundSync());
@@ -192,7 +196,8 @@ void ActiveRoleHandler::peerConnectionChange(bool connected)
             lg2::warning(
                 "Disabling redundancy in {TIME} minutes if peer connection doesn't come back",
                 "TIME", siblingHealthTimeout.count());
-            peerConnectionTimer.start(siblingHealthTimeout);
+            peerConnectionTimer.start(siblingHealthTimeout,
+                                      WaitOperation::peerConnectionTimer);
         }
     }
 }
@@ -293,7 +298,7 @@ sdbusplus::async::task<> ActiveRoleHandler::failoverStartActiveTarget()
     {
         // NOLINTNEXTLINE(clang-analyzer-core.uninitialized.Branch)
         co_await providers.getServices().startUnit(bmcActiveTarget,
-                                                   std::chrono::minutes{10});
+                                                   bmcActiveTargetTimeout);
     }
     catch (const std::exception& e)
     {

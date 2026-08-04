@@ -2,6 +2,7 @@
 #pragma once
 
 #include "services.hpp"
+#include "wait_tracker.hpp"
 
 #include <sdbusplus/async/barrier.hpp>
 #include <xyz/openbmc_project/Provisioning/Provisioning/common.hpp>
@@ -43,8 +44,11 @@ class ServicesImpl : public Services
      * @brief Constructor
      *
      * @param[in] ctx - The async context object
+     * @param[in] waitTracker - The wait tracker
      */
-    explicit ServicesImpl(sdbusplus::async::context& ctx) : ctx(ctx) {}
+    ServicesImpl(sdbusplus::async::context& ctx, WaitTracker& waitTracker) :
+        ctx(ctx), waitTracker(waitTracker)
+    {}
 
     /**
      * @brief Sets up watches on the host state
@@ -278,6 +282,25 @@ class ServicesImpl : public Services
     void loadPairingProps(const PairingPropMap& propertyMap);
 
     /**
+     * @brief Starts the PropertiesChanged watch the Activation interface
+     *
+     * @param[in] barrier - Initialization barrier
+     */
+    sdbusplus::async::task<> watchCodeUpdatePropertiesChanged(
+        std::shared_ptr<sdbusplus::async::barrier> barrier);
+
+    /**
+     * @brief Returns if the software object path is for a BMC image
+     *
+     * Checks the Purpose property on the Version interface.
+     *
+     * @param[in] path - The software object path
+     *
+     * @return true if the image purpose is BMC, false otherwise
+     */
+    sdbusplus::async::task<bool> isBMCCodeUpdate(const std::string& path) const;
+
+    /**
      * @brief Called when either the host state or boot progress property
      *        changes value to calculate the system state.
      */
@@ -293,6 +316,11 @@ class ServicesImpl : public Services
      * @brief The async context object
      */
     sdbusplus::async::context& ctx;
+
+    /**
+     * @brief The wait tracker
+     */
+    WaitTracker& waitTracker;
 
     /**
      * @brief The host state value

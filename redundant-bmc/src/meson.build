@@ -17,6 +17,7 @@ rbmc_deps = [
 rbmc_lib = static_library(
     'rbmc',
     'active_role_handler.cpp',
+    'code_update_activation.cpp',
     'config_parser.cpp',
     'error_data.cpp',
     'gpio.cpp',
@@ -34,6 +35,7 @@ rbmc_lib = static_library(
     'sync_interface_impl.cpp',
     'system_state.cpp',
     'util.cpp',
+    'wait_tracker.cpp',
     dependencies: rbmc_deps,
 )
 

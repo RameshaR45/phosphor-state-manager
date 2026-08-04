@@ -36,9 +36,10 @@ class ProvidersImpl : public Providers
      * @param[in] ctx - The async context object
      */
     explicit ProvidersImpl(sdbusplus::async::context& ctx) :
-        config(config_parser::readConfig()), services(ctx),
-        sibling(ctx, config, services), syncInterface(ctx),
-        siblingReset(ctx, config), pcieStorage(createPCIeStorage())
+        config(config_parser::readConfig()), services(ctx, waitTracker),
+        sibling(ctx, config, services, waitTracker),
+        syncInterface(ctx, waitTracker), siblingReset(ctx, config),
+        pcieStorage(createPCIeStorage())
     {}
 
     /**
@@ -83,6 +84,14 @@ class ProvidersImpl : public Providers
             return nullptr;
         }
         return &*pcieStorage;
+    }
+
+    /**
+     * @brief Returns the ProgressTracker provider
+     */
+    ProgressTracker& getTracker() override
+    {
+        return progTracker;
     }
 
   private:
@@ -135,6 +144,11 @@ class ProvidersImpl : public Providers
      * @brief The PCIeStorage implementation (optional)
      */
     std::optional<pcie_data::PCIeStorageImpl> pcieStorage;
+
+    /**
+     * @brief The ProgressTracker implementation
+     */
+    ProgressTracker progTracker;
 };
 
 }; // namespace rbmc

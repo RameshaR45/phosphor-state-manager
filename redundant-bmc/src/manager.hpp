@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #pragma once
 
+#include "code_update_activation.hpp"
 #include "providers.hpp"
 #include "redundancy_interface.hpp"
 #include "role_determination.hpp"
@@ -76,6 +77,26 @@ class Manager :
     sdbusplus::async::task<> method_call(start_failover_t /* unused */,
                                          Requester requester,
                                          const FailoverOptions& options);
+
+    /**
+     * @brief Returns the Redundancy D-Bus interface object
+     *
+     * @return Reference to the redundancy interface
+     */
+    const RedundancyInterface& getRedundancyInterface() const
+    {
+        return redundancyInterface;
+    }
+
+    /**
+     * @brief Returns the Providers instance used
+     *
+     * @return Reference to providers
+     */
+    Providers& getProviders()
+    {
+        return *providers;
+    }
 
   private:
     /**
@@ -209,6 +230,13 @@ class Manager :
      * @brief The Redundancy D-Bus interface
      */
     RedundancyInterface redundancyInterface;
+
+    /**
+     * @brief The code update Activation D-Bus interface.
+     *
+     * Used for tracking in progress code updates.
+     */
+    CodeUpdateActivation codeUpdateActivation;
 
     /**
      * @brief The role handler class
